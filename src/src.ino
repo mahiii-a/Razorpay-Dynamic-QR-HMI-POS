@@ -16,23 +16,37 @@ String storeName = "My Store";
 String api_key = "YOUR RAZORPAY API KEY HERE";
 String api_secret = "YOUR RAZORPAY API SECRET HERE";
 
-#define TFT_BL 2
-#define GFX_BL DF_GFX_BL
 
-Arduino_ESP32RGBPanel *bus = new Arduino_ESP32RGBPanel(
-  GFX_NOT_DEFINED /* CS */, GFX_NOT_DEFINED /* SCK */, GFX_NOT_DEFINED /* SDA */,
-  40 /* DE */, 41 /* VSYNC */, 39 /* HSYNC */, 42 /* PCLK */,
-  45 /* R0 */, 48 /* R1 */, 47 /* R2 */, 21 /* R3 */, 14 /* R4 */,
-  5 /* G0 */, 6 /* G1 */, 7 /* G2 */, 15 /* G3 */, 16 /* G4 */, 4 /* G5 */,
-  8 /* B0 */, 3 /* B1 */, 46 /* B2 */, 9 /* B3 */, 1 /* B4 */
+#include <SPI.h>
+
+#define TFT_CS    25
+#define TFT_DC    26
+#define TFT_RST   27
+
+#define TFT_SCK   18
+#define TFT_MOSI  23
+#define TFT_MISO  19
+
+#define TFT_BL    32
+
+// SPI display initialization
+Arduino_DataBus *bus = new Arduino_ESP32SPI(
+    TFT_DC,
+    TFT_CS,
+    TFT_SCK,
+    TFT_MOSI,
+    TFT_MISO
 );
 
+Arduino_GFX *gfx = new Arduino_ILI9341(
+    bus,
+    TFT_RST,
+    0,
+    false
+);
 
-Arduino_RPi_DPI_RGBPanel *gfx = new Arduino_RPi_DPI_RGBPanel(
-  bus,
-  480 /* width */, 0 /* hsync_polarity */, 8 /* hsync_front_porch */, 4 /* hsync_pulse_width */, 43 /* hsync_back_porch */,
-  272 /* height */, 0 /* vsync_polarity */, 8 /* vsync_front_porch */, 4 /* vsync_pulse_width */, 12 /* vsync_back_porch */,
-  1 /* pclk_active_neg */, 9000000 /* prefer_speed */, true /* auto_flush */);
+// -----------------------------------------------------------------------------
+
 #include "touch.h"
 
 
@@ -81,7 +95,7 @@ WiFiManager wifiManager;
 #define EEPROM_SIZE 512
 
 // SD card chip select pin
-#define SD_CS 10
+#define SD_CS 13
 
 // Create a web server object
 WebServer server(80);
@@ -331,7 +345,7 @@ String getCurrentDateTime() {
 
 
 void logEvent(const char *event) {
-  if (!SD.begin(SD_CS)) {
+  if (!SD.begin(SD_CS, SPI)) {
     Serial.println("SD card initialization failed!");
     return;
   }
@@ -937,14 +951,15 @@ void loadSettings() {
   addr += api_secret.length() + 1;
 }
 
+
 void createUI() {
-  // Create a background style
+  // Background
   lv_style_init(&style_background);
   lv_style_set_bg_color(&style_background, lv_color_hex(0xE0E0E0));
-  lv_style_set_pad_all(&style_background, 5);
+  lv_style_set_pad_all(&style_background, 3);
   lv_obj_add_style(lv_scr_act(), &style_background, 0);
 
-  // Create a button style
+  // Button style
   lv_style_init(&style_btn);
   lv_style_set_radius(&style_btn, 5);
   lv_style_set_bg_color(&style_btn, lv_color_hex(0x2196F3));
@@ -956,53 +971,40 @@ void createUI() {
   lv_style_set_text_color(&style_btn, lv_color_white());
   lv_style_set_text_font(&style_btn, &lv_font_montserrat_14);
 
-  // Left side container (1/2 of the screen width)
+  // Left container: Product controls
   lv_obj_t *left_container = lv_obj_create(lv_scr_act());
-  lv_obj_set_size(left_container, screenWidth / 2 - 10, screenHeight - 10);
-  lv_obj_align(left_container, LV_ALIGN_LEFT_MID, 2.5, 0);
+  lv_obj_set_size(left_container, 150, 230);
+  lv_obj_align(left_container, LV_ALIGN_LEFT_MID, 2, 0);
   lv_obj_set_style_bg_color(left_container, lv_color_hex(0xF5F5F5), 0);
-  lv_obj_set_style_pad_all(left_container, 5, 0);
+  lv_obj_set_style_pad_all(left_container, 3, 0);
 
   // Product image area
   lv_obj_t *imgArea = lv_obj_create(left_container);
-  lv_obj_set_size(imgArea, 160, 120);
-  lv_obj_align(imgArea, LV_ALIGN_TOP_MID, 0, 5);
-  lv_obj_set_style_bg_color(imgArea, lv_color_hex(0xFFFFFF), 0);
+  lv_obj_set_size(imgArea, 125, 75);
+  lv_obj_align(imgArea, LV_ALIGN_TOP_MID, 0, 3);
+  lv_obj_set_style_bg_color(imgArea, lv_color_white(), 0);
   lv_obj_set_style_border_color(imgArea, lv_color_hex(0xBDBDBD), 0);
   lv_obj_set_style_border_width(imgArea, 1, 0);
 
-  // // Create an image descriptor
-  // static lv_img_dsc_t img_dsc;
-  // img_dsc.header.w = 100;
-  // img_dsc.header.h = 100;
-  // img_dsc.header.cf = LV_IMG_CF_INDEXED_1BIT;
-  // img_dsc.data = epd_bitmap_mavo;
-
-  // // Create an image object
-  // lv_obj_t *img = lv_img_create(imgArea);
-  // lv_img_set_src(img, &img_dsc);
-  // lv_obj_center(img);
-
   // Product name
   productNameLabel = lv_label_create(left_container);
-  lv_obj_align(productNameLabel, LV_ALIGN_TOP_MID, 0, 130);
+  lv_obj_align(productNameLabel, LV_ALIGN_TOP_MID, 0, 82);
   lv_obj_set_style_text_font(productNameLabel, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_color(productNameLabel, lv_color_hex(0x212121), 0);
   lv_label_set_text(productNameLabel, "135 Mavo");
 
-  // Quantity selection area
+  // Quantity selection
   lv_obj_t *quantityArea = lv_obj_create(left_container);
-  lv_obj_set_size(quantityArea, 200, 40);
-  lv_obj_align(quantityArea, LV_ALIGN_TOP_MID, 0, 150);
+  lv_obj_set_size(quantityArea, 125, 35);
+  lv_obj_align(quantityArea, LV_ALIGN_TOP_MID, 0, 108);
   lv_obj_set_flex_flow(quantityArea, LV_FLEX_FLOW_ROW);
-  lv_obj_set_flex_align(quantityArea, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_style_bg_color(quantityArea, lv_color_hex(0xFFFFFF), 0);
-  lv_obj_set_style_border_color(quantityArea, lv_color_hex(0xBDBDBD), 0);
-  lv_obj_set_style_border_width(quantityArea, 1, 0);
+  lv_obj_set_flex_align(quantityArea, LV_FLEX_ALIGN_SPACE_BETWEEN,
+                        LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_bg_color(quantityArea, lv_color_white(), 0);
   lv_obj_set_style_pad_all(quantityArea, 2, 0);
 
   lv_obj_t *minusBtn = lv_btn_create(quantityArea);
-  lv_obj_set_size(minusBtn, 30, 30);
+  lv_obj_set_size(minusBtn, 30, 28);
   lv_obj_add_style(minusBtn, &style_btn, 0);
   lv_obj_add_event_cb(minusBtn, btn_event_handler, LV_EVENT_CLICKED, (void *)-1);
   lv_obj_t *minusLabel = lv_label_create(minusBtn);
@@ -1015,26 +1017,25 @@ void createUI() {
   updateQuantityLabel();
 
   lv_obj_t *plusBtn = lv_btn_create(quantityArea);
-  lv_obj_set_size(plusBtn, 30, 30);
+  lv_obj_set_size(plusBtn, 30, 28);
   lv_obj_add_style(plusBtn, &style_btn, 0);
   lv_obj_add_event_cb(plusBtn, btn_event_handler, LV_EVENT_CLICKED, (void *)1);
   lv_obj_t *plusLabel = lv_label_create(plusBtn);
   lv_label_set_text(plusLabel, "+");
   lv_obj_center(plusLabel);
 
-  // Color selection area
+  // Color selection
   lv_obj_t *colorArea = lv_obj_create(left_container);
-  lv_obj_set_size(colorArea, 200, 42);
-  lv_obj_align(colorArea, LV_ALIGN_TOP_MID, 0, 200);
+  lv_obj_set_size(colorArea, 125, 38);
+  lv_obj_align(colorArea, LV_ALIGN_TOP_MID, 0, 151);
   lv_obj_set_flex_flow(colorArea, LV_FLEX_FLOW_ROW);
-  lv_obj_set_flex_align(colorArea, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_style_bg_color(colorArea, lv_color_hex(0xFFFFFF), 0);
-  lv_obj_set_style_border_color(colorArea, lv_color_hex(0xBDBDBD), 0);
-  lv_obj_set_style_border_width(colorArea, 1, 0);
+  lv_obj_set_flex_align(colorArea, LV_FLEX_ALIGN_SPACE_EVENLY,
+                        LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_bg_color(colorArea, lv_color_white(), 0);
   lv_obj_set_style_pad_all(colorArea, 2, 0);
 
   lv_obj_t *yellowBtn = lv_btn_create(colorArea);
-  lv_obj_set_size(yellowBtn, 90, 30);
+  lv_obj_set_size(yellowBtn, 55, 28);
   lv_obj_add_style(yellowBtn, &style_btn, 0);
   lv_obj_set_style_bg_color(yellowBtn, lv_color_hex(0xFFC107), 0);
   lv_obj_set_style_bg_grad_color(yellowBtn, lv_color_hex(0xFFEB3B), 0);
@@ -1044,7 +1045,7 @@ void createUI() {
   lv_obj_center(yellowLabel);
 
   lv_obj_t *whiteBtn = lv_btn_create(colorArea);
-  lv_obj_set_size(whiteBtn, 90, 30);
+  lv_obj_set_size(whiteBtn, 55, 28);
   lv_obj_add_style(whiteBtn, &style_btn, 0);
   lv_obj_set_style_bg_color(whiteBtn, lv_color_hex(0x4CAF50), 0);
   lv_obj_set_style_bg_grad_color(whiteBtn, lv_color_hex(0x8BC34A), 0);
@@ -1053,20 +1054,15 @@ void createUI() {
   lv_label_set_text(whiteLabel, "White");
   lv_obj_center(whiteLabel);
 
-  // QR Code display area (right 1/2 of the screen)
+  // Right container: QR code
   qrCodeArea = lv_obj_create(lv_scr_act());
-  lv_obj_set_size(qrCodeArea, screenWidth / 2 - 10, screenHeight - 10);
-  lv_obj_align(qrCodeArea, LV_ALIGN_RIGHT_MID, -2.5, 0);
-  lv_obj_set_style_bg_color(qrCodeArea, lv_color_hex(0xFFFFFF), 0);
+  lv_obj_set_size(qrCodeArea, 150, 230);
+  lv_obj_align(qrCodeArea, LV_ALIGN_RIGHT_MID, -2, 0);
+  lv_obj_set_style_bg_color(qrCodeArea, lv_color_white(), 0);
   lv_obj_set_style_border_color(qrCodeArea, lv_color_hex(0xBDBDBD), 0);
   lv_obj_set_style_border_width(qrCodeArea, 1, 0);
-  // // WiFi status (small text in corner)
-  // wifiStatusLabel = lv_label_create(qrCodeArea);
-  // lv_obj_align(wifiStatusLabel, LV_ALIGN_TOP_MID, 0, 0);
-  // lv_obj_set_style_text_font(wifiStatusLabel, &lv_font_montserrat_14, 0);
-  // lv_obj_set_style_text_color(wifiStatusLabel, lv_color_hex(0x212121), 0);
-  // updateWiFiStatus();
 }
+
 
 void my_disp_flush(lv_disp_drv_t *disp, const lv_area_t *area, lv_color_t *color_p) {
   uint32_t w = (area->x2 - area->x1 + 1);
@@ -1112,7 +1108,7 @@ void setup() {
   EEPROM.begin(EEPROM_SIZE);
 
   // Initialize SD card
-  if (!SD.begin(SD_CS)) {
+  if (!SD.begin(SD_CS, SPI)) {
     Serial.println("SD card initialization failed!");
   } else {
     Serial.println("SD card initialized successfully.");
@@ -1128,9 +1124,16 @@ void setup() {
   // Load settings from EEPROM
   loadSettings();
 
-  // Initialize display
-  gfx->begin();
-  gfx->fillScreen(BLACK);
+// Initialize SPI display
+gfx->begin();
+gfx->setRotation(1);
+gfx->fillScreen(0x0000);
+
+Serial.println("ILI9341 Display Initialized");
+Serial.print("Width: ");
+Serial.println(gfx->width());
+Serial.print("Height: ");
+Serial.println(gfx->height());
 
   // Init touch device
   touch_init();
@@ -1221,5 +1224,3 @@ void loop() {
 
   delay(5);
 }
-
-

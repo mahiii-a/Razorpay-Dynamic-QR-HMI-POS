@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>QR Bitmap Console</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%2317211E'/%3E%3Cpath fill='%23F2F4EF' d='M3 3h4v4H3zM9 3h4v4H9zM3 9h4v4H3zM9 9h2v2H9zM12 12h1v1h-1z'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true">
+      <rect width="24" height="24" rx="5" fill="currentColor"/>
+      <path fill="var(--paper)" d="M5 5h6v6H5zM13 5h6v6h-6zM5 13h6v6H5zM13 13h3v3h-3zM17 17h2v2h-2z"/>
+    </svg>
+    <div>
+      <h1>QR bitmap console</h1>
+      <p>Prepare Razorpay QR images for the 480&times;272 POS display</p>
+    </div>
+  </div>
+  <div class="topbar-status" id="server-status" role="status">
+    <span class="dot" aria-hidden="true"></span><span id="server-status-text">Server running</span>
+  </div>
+</header>
+
+<main class="console">
+
+  <!-- ───────────── controls ───────────── -->
+  <aside class="controls" aria-label="Conversion settings">
+
+    <section class="group">
+      <h2>Source image</h2>
+      <div class="segmented" role="tablist" aria-label="Source type">
+        <button role="tab" aria-selected="true"  data-source="file" id="tab-file">Upload</button>
+        <button role="tab" aria-selected="false" data-source="url"  id="tab-url">From URL</button>
+      </div>
+
+      <div id="source-file">
+        <label class="drop" id="drop" for="file-input">
+          <input type="file" id="file-input" accept="image/png,image/jpeg,image/webp,image/gif,image/bmp">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V5m0 0-4 4m4-4 4 4M5 15v3a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="drop-title" id="drop-title">Drop the QR image here</span>
+          <span class="drop-sub" id="drop-sub">or click to choose a PNG or JPG</span>
+        </label>
+      </div>
+
+      <div id="source-url" hidden>
+        <label class="field" for="url-input">
+          <span>Image URL</span>
+          <input type="url" id="url-input" placeholder="https://rzp.io/i/&hellip; or the image_url from Razorpay" spellcheck="false">
+        </label>
+        <button class="btn btn-quiet" id="url-load" type="button">Load image</button>
+        <p class="hint">The server downloads this URL, same as the ESP32 does.</p>
+      </div>
+    </section>
+
+    <section class="group">
+      <h2>Crop</h2>
+      <p class="hint">Pixels removed from each edge of the original image. Trim the Razorpay branding and white border.</p>
+      <div class="crop-grid">
+        <label class="field crop-top"><span>Top</span><input type="number" min="0" step="1" id="crop-top"    value="{{ settings.crop.top }}"></label>
+        <label class="field crop-left"><span>Left</span><input type="number" min="0" step="1" id="crop-left"   value="{{ settings.crop.left }}"></label>
+        <div class="crop-center" aria-hidden="true"></div>
+        <label class="field crop-right"><span>Right</span><input type="number" min="0" step="1" id="crop-right"  value="{{ settings.crop.right }}"></label>
+        <label class="field crop-bottom"><span>Bottom</span><input type="number" min="0" step="1" id="crop-bottom" value="{{ settings.crop.bottom }}"></label>
+      </div>
+    </section>
+
+    <section class="group">
+      <h2>Size and contrast</h2>
+
+      <div class="slider">
+        <div class="slider-head">
+          <label for="compression">Scale</label>
+          <output id="compression-out" for="compression">{{ settings.compression }}%</output>
+        </div>
+        <input type="range" id="compression" min="10" max="100" step="1" value="{{ settings.compression }}">
+        <p class="hint">Smaller scale means fewer bytes and a smaller QR on screen. Keep it large enough to scan.</p>
+      </div>
+
+      <div class="slider">
+        <div class="slider-head">
+          <label for="threshold">Black and white cut-off</label>
+          <output id="threshold-out" for="threshold">{{ settings.threshold }}</output>
+        </div>
+        <input type="range" id="threshold" class="track-gray" min="0" max="255" step="1" value="{{ settings.threshold }}">
+        <p class="hint">Pixels darker than this become black.</p>
+      </div>
+    </section>
+
+    <section class="group">
+      <h2>Output format</h2>
+      <div class="segmented" role="radiogroup" aria-label="Bit order">
+        <button role="radio" aria-checked="{{ 'true' if settings.mode == 'horizontal' else 'false' }}" data-mode="horizontal">Rows</button>
+        <button role="radio" aria-checked="{{ 'true' if settings.mode == 'vertical' else 'false' }}" data-mode="vertical">Columns</button>
+      </div>
+      <p class="hint">Rows is what <code>src.ino</code> reads. Only change this if you changed the firmware.</p>
+
+      <label class="check">
+        <input type="checkbox" id="invert" {{ 'checked' if settings.invert else '' }}>
+        <span>
+          <strong>Dark pixels are 1</strong>
+          <em>The firmware draws a set bit as black. Turn off only if your QR comes out inverted.</em>
+        </span>
+      </label>
+    </section>
+
+    <section class="group group-actions">
+      <button class="btn btn-primary" id="save-defaults" type="button">Save as device defaults</button>
+      <p class="hint">The ESP32 uses these values every time it requests a QR. Experimenting here does not change them until you save.</p>
+    </section>
+  </aside>
+
+  <!-- ───────────── stage ───────────── -->
+  <section class="stage" aria-label="Preview and output">
+
+    <div class="panes">
+      <figure class="pane">
+        <figcaption>
+          <span>Original</span>
+          <span class="meta" id="source-meta">No image yet</span>
+        </figcaption>
+        <div class="source-frame" id="source-frame">
+          <div class="empty" id="source-empty">
+            <p>Add an image to start.</p>
+            <p class="hint">Create a QR in the Razorpay dashboard or from the ESP32, then drop it in.</p>
+          </div>
+          <div class="source-stack" id="source-stack" hidden>
+            <img id="source-img" alt="Original QR image">
+            <i class="shade" id="shade-top"></i><i class="shade" id="shade-right"></i>
+            <i class="shade" id="shade-bottom"></i><i class="shade" id="shade-left"></i>
+            <i class="keep" id="keep"></i>
+          </div>
+        </div>
+      </figure>
+
+      <figure class="pane">
+        <figcaption>
+          <span>On the display</span>
+          <span class="meta" id="result-meta">&mdash;</span>
+        </figcaption>
+        <div class="device">
+          <div class="screen">
+            <div class="qr-panel" id="qr-panel" style="--panel-w: 230px; --panel-h: 262px;">
+              <div class="qr-slot" id="qr-slot">
+                <img id="result-img" alt="1-bit preview of the converted QR" hidden>
+                <span class="slot-empty" id="slot-empty">Preview appears here</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p class="fit" id="fit" role="status"></p>
+      </figure>
+    </div>
+
+    <div class="readout" id="readout" aria-live="polite">
+      <dl>
+        <div><dt>Bitmap</dt><dd id="stat-size">&mdash;</dd></div>
+        <div><dt>Bytes</dt><dd id="stat-bytes">&mdash;</dd></div>
+        <div>
+          <dt>ESP32 JSON buffer</dt>
+          <dd><span id="stat-json">&mdash;</span><span class="budget" aria-hidden="true"><i id="budget-fill"></i></span></dd>
+        </div>
+      </dl>
+    </div>
+
+    <section class="output">
+      <header>
+        <h2>Byte array</h2>
+        <div class="output-actions">
+          <button class="btn btn-quiet" id="copy-bytes" type="button" disabled>Copy bytes</button>
+          <button class="btn btn-quiet" id="copy-c" type="button" disabled>Copy as C array</button>
+          <button class="btn btn-quiet" id="download-h" type="button" disabled>Download .h</button>
+        </div>
+      </header>
+      <pre id="output" tabindex="0" aria-label="Byte array output"><code id="output-code">Nothing converted yet.</code></pre>
+    </section>
+
+  </section>
+</main>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+  window.QR_LIMITS = {{ limits | tojson }};
+</script>
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

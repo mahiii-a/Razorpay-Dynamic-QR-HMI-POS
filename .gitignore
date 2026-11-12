@@ -1,32 +1,24 @@
-# Prerequisites
-*.d
 
-# Compiled Object files
-*.slo
-*.lo
-*.o
-*.obj
+# Python virtual environments
+.venv/
+venv/
+env/
 
-# Precompiled Headers
-*.gch
-*.pch
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
 
-# Compiled Dynamic libraries
-*.so
-*.dylib
-*.dll
+# Environment variables and secrets
+.env
+.env.*
 
-# Fortran module files
-*.mod
-*.smod
+# Allow an example configuration file
+!.env.example
 
-# Compiled Static libraries
-*.lai
-*.la
-*.a
-*.lib
+# IDE and OS files
+.vscode/
+.DS_Store
 
-# Executables
-*.exe
-*.out
-*.app
+# Generated files
+*.log
